@@ -1,0 +1,10 @@
+name: legit
+version: 1.0.0
+authors:
+- Kenneth Endfinger <kaendfinger@gmail.com>
+- samrg472 <samrg472@gmail.com>
+- TheMike <zeusintraining@gmail.com>
+description: Sane Git Wrapper
+homepage: https://github.com/DirectMyFile/legit/
+environment:
+  sdk: '>=1.8.0'
