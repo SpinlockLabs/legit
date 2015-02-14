@@ -30,6 +30,24 @@ class GitClient {
     return execute(args).then((code) => code == GitExitCodes.OK);
   }
 
+  Future<List<String>> listTree(String ref) {
+    return executeResult(["ls-tree", "--full-tree", "-r", ref]).then((result) {
+      if (result.exitCode != 0) throw new GitException("Failed to list tree.");
+      var content = result.stdout;
+      var lines = content.split("\n");
+      return lines
+          .map((it) => it.replaceAll("\t", " "))
+          .map((it) => it.trim())
+          .map((it) => it.split(" ")..removeWhere((m) {
+            return m.trim().isEmpty;
+          }))
+          .where((it) => it.isNotEmpty)
+          .map((it) {
+            return it[3];
+          }).toList();
+    });
+  }
+
   Future<GitCommit> commit(String message) {
     var args = ["commit", "-m", message];
 
