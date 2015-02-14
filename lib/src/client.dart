@@ -30,7 +30,7 @@ class GitClient {
     return execute(args).then((code) => code == GitExitCodes.OK);
   }
 
-  Future<List<String>> listTree(String ref) {
+  Future<List<GitTreeFile>> listTree(String ref) {
     return executeResult(["ls-tree", "--full-tree", "-r", ref]).then((result) {
       if (result.exitCode != 0) throw new GitException("Failed to list tree.");
       var content = result.stdout;
@@ -43,7 +43,7 @@ class GitClient {
           }))
           .where((it) => it.isNotEmpty)
           .map((it) {
-            return it[3];
+            return new GitTreeFile(it[2], it[3]);
           }).toList();
     });
   }

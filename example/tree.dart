@@ -4,6 +4,6 @@ void main() {
   var git = new GitClient();
 
   git.listTree("HEAD").then((files) {
-    print(files.join("\n"));
+    print(files.map((it) => it.path).join("\n"));
   });
 }

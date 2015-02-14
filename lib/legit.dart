@@ -11,3 +11,4 @@ part "src/exceptions.dart";
 part "src/helpers.dart";
 part "src/merge.dart";
 part "src/refs.dart";
+part "src/tree.dart";
