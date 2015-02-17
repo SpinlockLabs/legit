@@ -29,6 +29,49 @@ class GitClient {
 
     return execute(args).then((code) => code == GitExitCodes.OK);
   }
+  
+  Future<String> hashObject(content, {String type, bool write: true}) {
+    if (content is! String && content is! List<int>) {
+      throw new ArgumentError("Invalid Content");
+    }
+    
+    var args = ["hash-object", "--stdin"];
+    
+    if (write) {
+      args.add("-w");
+    }
+    
+    var buff = new StringBuffer();
+    
+    return executeSpawn(args).then((process) {
+      process.stdin.write(content);
+      process.stdin.close();
+      
+      process.stdout.transform(UTF8.decoder).listen((data)=> buff.write(data));
+      
+      return process.exitCode;
+    }).then((code) {
+      if (code != 0) {
+        throw new GitException("Failed to hash object.");
+      } else {
+        return buff.toString().trim();
+      }
+    });
+  }
+  
+  Future<String> createPatch(String ref) {
+    return executeResult(["format-patch", ref, "--stdout"]).then((result) {
+      if (result.exitCode != GitExitCodes.OK) {
+        throw new GitException("Failed to generate patch.");
+      }
+      
+      return result.stdout;
+    });
+  }
+  
+  Future<String> createDiff(String from, String to) {
+    return executeResult(["diff", from, to]).then((result) => result.stdout);
+  }
 
   Future<List<GitTreeFile>> listTree(String ref) {
     return executeResult(["ls-tree", "--full-tree", "-r", ref]).then((result) {
@@ -80,7 +123,7 @@ class GitClient {
     });
   }
 
-  Future<List<GitCommit>> listCommits({int limit, String range}) {
+  Future<List<GitCommit>> listCommits({int limit, String range, String file}) {
     var args = ["log", "--format=format:%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B%n%n%n%n", "--no-color"];
 
     if (limit != null) {
@@ -89,6 +132,10 @@ class GitClient {
 
     if (range != null) {
       args.add(range);
+    }
+    
+    if (file != null) {
+      args.addAll(["--", file]);
     }
 
     return executeResult(args).then((result) {
@@ -322,6 +369,41 @@ class GitClient {
       return code == GitExitCodes.OK;
     });
   }
+  
+  Future<bool> fsck({bool full: false, bool strict: false}) {
+    var args = ["fsck"];
+    
+    if (full) {
+      args.add("--full");
+    }
+    
+    if (strict) {
+      args.add("--strict");
+    }
+    
+    return executeResult(args).then((result) => result.exitCode == 0);
+  }
+  
+  Future<List<GitRef>> listRemoteRefs({String url}) {
+    return executeResult(["ls-remote"]..addAll(url != null ? [url] : [])).then((result) {
+      List<String> refLines = result.stdout.split("\n");
+      var refs = [];
+      for (var line in refLines) {
+        if (line.trim().isEmpty) continue;
+
+        var ref = new GitRef(this);
+
+        var parts = line.split(new RegExp(r"\t| "))..removeWhere((it) => it.trim().isEmpty);
+
+        ref.commitSha = parts[0];
+        ref.ref = parts[1];
+
+        refs.add(ref);
+      }
+
+      return refs;
+    });
+  }
 
   Future<List<String>> listBranches({String remote}) {
     return listRefs().then((refs) {
@@ -382,6 +464,10 @@ class GitClient {
       return code == GitExitCodes.OK;
     });
   }
+  
+  Future<Process> executeSpawn(List<String> args) {
+    return Process.start("git", args, workingDirectory: directory.path);
+  }
 
   Future<int> execute(List<String> args) {
     return Process.start("git", args, workingDirectory: directory.path).then((process) {
@@ -408,5 +494,9 @@ class GitClient {
   
   Future<bool> init({bool bare: false}) {
     return execute(["init"]..addAll(bare ? ["--bare"] : [])).then((code) => code == GitExitCodes.OK);
+  }
+
+  Future<GitCommit> getCommit(String commitSha) {
+    return listCommits(limit: 1, range: commitSha).then((commits) => commits.first);
   }
 }

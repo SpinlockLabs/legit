@@ -22,5 +22,5 @@ class GitRef {
 
   String get name => ref.split("/").last;
 
-  GitCommit get commit => null;
+  Future<GitCommit> get commit => git.getCommit(commitSha);
 }
