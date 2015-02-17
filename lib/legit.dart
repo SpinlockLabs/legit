@@ -1,6 +1,7 @@
 library legit;
 
 import "dart:async";
+import "dart:convert";
 import "dart:io";
 
 import "src/utils.dart";

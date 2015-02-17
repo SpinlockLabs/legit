@@ -47,6 +47,20 @@ class GitClient {
           }).toList();
     });
   }
+  
+  Future<List<int>> getBinaryBlob(String blob) {
+    return executeResult(["cat-file", "blob", blob], binary: true).then((result) {
+      if (result.exitCode != 0) {
+        throw new Exception("Blob not Found");
+      }
+      
+      return result.stdout;
+    });
+  }
+  
+  Future<String> getTextBlob(String blob) {
+    return getBinaryBlob(blob).then((content) => UTF8.decode(content));
+  }
 
   Future<GitCommit> commit(String message) {
     var args = ["commit", "-m", message];
@@ -85,10 +99,7 @@ class GitClient {
         var commits = [];
         List<String> clines = output.split("\n\n\n\n\n").map((it) => it.trim()).toList();
         clines.removeWhere((it) => it.isEmpty || !it.contains("\n"));
-        var count = clines.length;
-        var i = 0;
         for (var line in clines) {
-          i++;
           var parts = line.split("\n");
           var commit = new GitCommit(this);
           commit.sha = parts[0];
@@ -381,8 +392,8 @@ class GitClient {
     });
   }
 
-  Future<ProcessResult> executeResult(List<String> args) {
-    return Process.run("git", args, workingDirectory: directory.path);
+  Future<ProcessResult> executeResult(List<String> args, {bool binary: false}) {
+    return Process.run("git", args, workingDirectory: directory.path, stdoutEncoding: binary ? null : SYSTEM_ENCODING);
   }
   
   ProcessResult executeSync(List<String> args) {

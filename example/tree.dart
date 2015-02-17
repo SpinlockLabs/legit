@@ -4,6 +4,10 @@ void main() {
   var git = new GitClient();
 
   git.listTree("HEAD").then((files) {
-    print(files.map((it) => it.path + " (" + it.blob + ")").join("\n"));
+    return files.where((file) => file.name.endsWith(".dart")).map((it) => it.blob).toList();
+  }).then((blobs) {
+    return git.getTextBlob(blobs[0]);
+  }).then((content) {
+    print(content);
   });
 }
