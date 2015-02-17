@@ -167,15 +167,27 @@ class GitClient {
     });
   }
 
-  Future<GitMergeResult> merge(String ref, {String into, String message}) {
+  Future<GitMergeResult> merge(String ref, {String into, String message, bool fastForward: false, bool fastForwardOnly: false, String strategy}) {
     var args = ["merge"];
 
     if (message != null) {
       args.addAll(["-m", message]);
     }
+    
+    if (fastForward) {
+      args.add("--ff");
+    }
+    
+    if (fastForwardOnly) {
+      args.add("--ff-only");
+    }
 
     if (into != null) {
       args.add(into);
+    }
+    
+    if (strategy != null) {
+      args.add("--strategy=${strategy}");  
     }
 
     args.add(ref);
@@ -188,6 +200,26 @@ class GitClient {
       }
       return result;
     });
+  }
+  
+  Future<bool> filterBranch(String ref, String command) {
+    return execute(["filter-branch", command, ref]).then((code) => code == GitExitCodes.OK);
+  }
+  
+  Future<>
+  
+  Future<String> writeTree() {
+    return executeResult(["write-tree"]).then((result) {
+      if (result.exitCode != GitExitCodes.OK) {
+        throw new GitException("Failed to write tree.");
+      }
+      
+      return result.stdout.trim();
+    });
+  }
+  
+  Future<bool> updateServerInfo() {
+    return execute(["update-server-info"]).then((code) => code == GitExitCodes.OK);
   }
 
   Future<bool> push({String remote: "origin", String branch: "HEAD"}) {
@@ -204,6 +236,18 @@ class GitClient {
 
   Future<bool> abortMerge() {
     return execute(["merge", "--abort"]).then((code) => code == GitExitCodes.OK);
+  }
+  
+  Future<bool> cherryPick(String commit) {
+    return execute(["cherry-pick", commit]).then((code) => code == 0);
+  }
+  
+  Future<bool> abortCherryPick() {
+    return execute(["cherry-pick", "--abort"]).then((code) => code == 0);
+  }
+  
+  Future<bool> quitCherryPick() {
+    return execute(["cherry-pick", "--quit"]).then((code) => code == 0);
   }
 
   Future<bool> checkout(String branch, {bool create: false, String from}) {

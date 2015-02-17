@@ -18,6 +18,7 @@ class GitCommit {
 
 class GitAuthor {
   final GitClient git;
+  
   GitAuthor(this.git);
 
   String name;
