@@ -206,8 +206,6 @@ class GitClient {
     return execute(["filter-branch", command, ref]).then((code) => code == GitExitCodes.OK);
   }
   
-  Future<>
-  
   Future<String> writeTree() {
     return executeResult(["write-tree"]).then((result) {
       if (result.exitCode != GitExitCodes.OK) {
