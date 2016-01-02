@@ -1,13 +1,12 @@
 import "package:legit/legit.dart";
 
-void main() {
+main() async {
   var git = new GitClient();
 
-  git.listCommits().then((commits) {
-    for (var commit in commits) {
-      print("- " + commit.message);
-      print("  By: ${commit.author.name} <${commit.author.email}>");
-      print("  SHA: ${commit.sha}");
-    }
-  });
+  var commits = await git.listCommits();
+  for (var commit in commits) {
+    print("- " + commit.message);
+    print("  By: ${commit.author.name} <${commit.author.email}>");
+    print("  SHA: ${commit.sha}");
+  }
 }

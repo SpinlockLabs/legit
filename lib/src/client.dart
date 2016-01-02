@@ -1,12 +1,19 @@
 part of legit;
 
 class GitClient {
+  static final RegExp _TAB_SPACE = new RegExp(r"\t| ");
+
   final Directory directory;
-  bool quiet = false;
 
-  GitClient([Directory dir]) : directory = (dir == null ? Directory.current : dir);
+  GitClient([Directory dir]) :
+      directory = (dir == null ? Directory.current : dir);
 
-  Future<bool> clone(String url, {String branch, bool bare: false, bool mirror: false, bool recursive: false}) {
+  Future<bool> clone(String url, {
+    String branch,
+    bool bare: false,
+    bool mirror: false,
+    bool recursive: false
+  }) async {
     var args = ["clone", url];
 
     if (branch != null) {
@@ -27,80 +34,92 @@ class GitClient {
 
     args.add(directory.path);
 
-    return execute(args).then((code) => code == GitExitCodes.OK);
+    var code = await execute(args);
+    return code == GitExitCodes.OK;
   }
-  
-  Future<String> hashObject(content, {String type, bool write: true}) {
+
+  Future<String> hashObject(content, {
+    String type,
+    bool write: true
+  }) async {
     if (content is! String && content is! List<int>) {
       throw new ArgumentError("Invalid Content");
     }
-    
+
     var args = ["hash-object", "--stdin"];
-    
+
     if (write) {
       args.add("-w");
     }
-    
+
     var buff = new StringBuffer();
-    
-    return executeSpawn(args).then((process) {
-      process.stdin.write(content);
-      process.stdin.close();
-      
-      process.stdout.transform(UTF8.decoder).listen((data)=> buff.write(data));
-      
-      return process.exitCode;
-    }).then((code) {
-      if (code != 0) {
-        throw new GitException("Failed to hash object.");
-      } else {
-        return buff.toString().trim();
-      }
-    });
-  }
-  
-  Future<String> createPatch(String ref) {
-    return executeResult(["format-patch", ref, "--stdout"]).then((result) {
-      if (result.exitCode != GitExitCodes.OK) {
-        throw new GitException("Failed to generate patch.");
-      }
-      
-      return result.stdout;
-    });
-  }
-  
-  Future<String> createDiff(String from, String to) {
-    return executeResult(["diff", from, to]).then((result) => result.stdout);
+
+    Process process = await executeSpawn(args);
+    process.stdin.write(content);
+    process.stdin.close();
+
+    process.stdout
+      .transform(const Utf8Decoder())
+      .listen((data)=> buff.write(data));
+
+    int code = await process.exitCode;
+
+    if (code != 0) {
+      throw new GitException("Failed to hash object.");
+    } else {
+      return buff.toString().trim();
+    }
   }
 
-  Future<List<GitTreeFile>> listTree(String ref) {
-    return executeResult(["ls-tree", "--full-tree", "-r", ref]).then((result) {
-      if (result.exitCode != 0) throw new GitException("Failed to list tree.");
-      var content = result.stdout;
-      var lines = content.split("\n");
-      return lines
-          .map((it) => it.replaceAll("\t", " "))
-          .map((it) => it.trim())
-          .map((it) => it.split(" ")..removeWhere((m) {
-            return m.trim().isEmpty;
-          }))
-          .where((it) => it.isNotEmpty)
-          .map((it) {
-            return new GitTreeFile(it[2], it[3]);
-          }).toList();
-    });
+  Future<String> createPatch(String ref) async {
+    var args = ["format-patch", ref, "--stdout"];
+    var result = await executeResult(args);
+    if (result.exitCode != GitExitCodes.OK) {
+      throw new GitException("Failed to generate patch.");
+    }
+
+    return result.stdout;
   }
-  
+
+  Future<String> createDiff(String from, String to) async {
+    var args = ["diff", from, to];
+    var result = await executeResult(args);
+    if (result.exitCode != GitExitCodes.OK) {
+      return null;
+    }
+    return result.stdout.toString();
+  }
+
+  Future<List<GitTreeFile>> listTree(String ref) async {
+    var args = ["ls-tree", "--full-tree", "-r", ref];
+    var result = await executeResult(args);
+    if (result.exitCode != 0) {
+      throw new GitException("Failed to list tree.");
+    }
+    var content = result.stdout;
+    var lines = content.split("\n");
+    return lines
+      .map((it) => it.replaceAll("\t", " "))
+      .map((it) => it.trim())
+      .map((it) => it.split(" ")..removeWhere((m) {
+      return m.trim().isEmpty;
+    }))
+      .where((it) => it.isNotEmpty)
+      .map((it) {
+      return new GitTreeFile(it[2], it[3]);
+    }).toList();
+  }
+
   Future<List<int>> getBinaryBlob(String blob) {
     return executeResult(["cat-file", "blob", blob], binary: true).then((result) {
       if (result.exitCode != 0) {
         throw new Exception("Blob not Found");
       }
-      
+
       return result.stdout;
     });
   }
-  
+
   Future<String> getTextBlob(String blob) {
     return getBinaryBlob(blob).then((content) => UTF8.decode(content));
   }
@@ -123,8 +142,12 @@ class GitClient {
     });
   }
 
-  Future<List<GitCommit>> listCommits({int limit, String range, String file}) {
-    var args = ["log", "--format=format:%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B%n%n%n%n", "--no-color"];
+  Future<List<GitCommit>> listCommits({int limit, String range, String file}) async {
+    var args = [
+      "log",
+      "--format=format:%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B%n%n%n%n",
+      "--no-color"
+    ];
 
     if (limit != null) {
       args.add("--max-count=${limit}");
@@ -133,51 +156,59 @@ class GitClient {
     if (range != null) {
       args.add(range);
     }
-    
+
     if (file != null) {
       args.addAll(["--", file]);
     }
 
-    return executeResult(args).then((result) {
-      if (result.exitCode != 0) {
-        return null;
-      } else {
-        String output = result.stdout;
-        var commits = [];
-        List<String> clines = output.split("\n\n\n\n\n").map((it) => it.trim()).toList();
-        clines.removeWhere((it) => it.isEmpty || !it.contains("\n"));
-        for (var line in clines) {
-          var parts = line.split("\n");
-          var commit = new GitCommit(this);
-          commit.sha = parts[0];
-          commit.treeSha = parts[1];
-          commit.author = new GitAuthor(this)
-              ..name = parts[2]
-              ..email = parts[3];
-          commit.committer = new GitAuthor(this)
-              ..name = parts[4]
-              ..email = parts[5];
-          commit.authoredAt = DateTime.parse(parts[6]);
-          commit.committedAt = DateTime.parse(parts[7]);
-          commit.message = parts.getRange(8, parts.length).join("\n");
-          commits.add(commit);
-        }
-        return commits;
+    ProcessResult result = await executeResult(args);
+
+    if (result.exitCode != 0) {
+      return null;
+    } else {
+      String output = result.stdout;
+      var commits = [];
+      List<String> clines = output.split("\n\n\n\n\n")
+        .map((it) => it.trim())
+        .toList();
+      clines.removeWhere((it) => it.isEmpty || !it.contains("\n"));
+      for (var line in clines) {
+        var parts = line.split("\n");
+        var commit = new GitCommit(this);
+        commit.sha = parts[0];
+        commit.treeSha = parts[1];
+        commit.author = new GitAuthor(this)
+          ..name = parts[2]
+          ..email = parts[3];
+        commit.committer = new GitAuthor(this)
+          ..name = parts[4]
+          ..email = parts[5];
+        commit.authoredAt = DateTime.parse(parts[6]);
+        commit.committedAt = DateTime.parse(parts[7]);
+        commit.message = parts.getRange(8, parts.length).join("\n");
+        commits.add(commit);
       }
-    });
+      return commits;
+    }
   }
 
-  Future<GitMergeResult> merge(String ref, {String into, String message, bool fastForward: false, bool fastForwardOnly: false, String strategy}) {
+  Future<GitMergeResult> merge(String ref, {
+    String into,
+    String message,
+    bool fastForward: false,
+    bool fastForwardOnly: false,
+    String strategy
+  }) async {
     var args = ["merge"];
 
     if (message != null) {
       args.addAll(["-m", message]);
     }
-    
+
     if (fastForward) {
       args.add("--ff");
     }
-    
+
     if (fastForwardOnly) {
       args.add("--ff-only");
     }
@@ -185,37 +216,36 @@ class GitClient {
     if (into != null) {
       args.add(into);
     }
-    
+
     if (strategy != null) {
-      args.add("--strategy=${strategy}");  
+      args.add("--strategy=${strategy}");
     }
 
     args.add(ref);
 
-    return executeResult(args).then((proc) {
-      var result = new GitMergeResult();
-      result.code = proc.exitCode;
-      if (result.code == 1 && proc.stdout.toString().contains("CONFLICT")) {
-        result.conflicts = true;
-      }
-      return result;
-    });
+    ProcessResult proc = await executeResult(args);
+    var result = new GitMergeResult();
+    result.code = proc.exitCode;
+    if (result.code == 1 && proc.stdout.toString().contains("CONFLICT")) {
+      result.conflicts = true;
+    }
+    return result;
   }
-  
+
   Future<bool> filterBranch(String ref, String command) {
     return execute(["filter-branch", command, ref]).then((code) => code == GitExitCodes.OK);
   }
-  
+
   Future<String> writeTree() {
     return executeResult(["write-tree"]).then((result) {
       if (result.exitCode != GitExitCodes.OK) {
         throw new GitException("Failed to write tree.");
       }
-      
+
       return result.stdout.trim();
     });
   }
-  
+
   Future<bool> updateServerInfo() {
     return execute(["update-server-info"]).then((code) => code == GitExitCodes.OK);
   }
@@ -235,15 +265,15 @@ class GitClient {
   Future<bool> abortMerge() {
     return execute(["merge", "--abort"]).then((code) => code == GitExitCodes.OK);
   }
-  
+
   Future<bool> cherryPick(String commit) {
     return execute(["cherry-pick", commit]).then((code) => code == 0);
   }
-  
+
   Future<bool> abortCherryPick() {
     return execute(["cherry-pick", "--abort"]).then((code) => code == 0);
   }
-  
+
   Future<bool> quitCherryPick() {
     return execute(["cherry-pick", "--quit"]).then((code) => code == 0);
   }
@@ -264,11 +294,12 @@ class GitClient {
     return execute(args).then((code) => code == GitExitCodes.OK);
   }
 
-  bool add(String path) {
-    return executeSync(["add", path]).exitCode == GitExitCodes.OK;
+  Future<bool> add(String path) async {
+    var code = await execute(["add", path]);
+    return code == GitExitCodes.OK;
   }
 
-  bool rm(String path, {bool recursive: false, bool force: false}) {
+  Future<bool> rm(String path, {bool recursive: false, bool force: false}) async {
     var args = ["rm"];
 
     if (recursive) {
@@ -280,20 +311,21 @@ class GitClient {
     }
 
     args.add(path);
-    return Process.runSync("git", args, workingDirectory: directory.path).exitCode == GitExitCodes.OK;
+    var code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
-  bool hasRemote(String remote) {
-    return Process.runSync("git", ["remote"], workingDirectory: directory.path).stdout.split(" ").contains(remote);
+  Future<bool> hasRemote(String remote) async {
+    var result = await executeResult(["remote"]);
+    return result.stdout.split(" ").contains(remote);
   }
 
-  Future<bool> isRepository() {
-    return execute(["status"]).then((code) {
-      return code == GitExitCodes.STATUS_NOT_A_GIT_REPOSITORY;
-    });
+  Future<bool> isRepository() async {
+    var code = await execute(["status"]);
+    return code != GitExitCodes.STATUS_NOT_A_GIT_REPOSITORY;
   }
 
-  Future<bool> rebase(String branch, {String onto, String upstream}) {
+  Future<bool> rebase(String branch, {String onto, String upstream}) async {
     var args = ["rebase"];
 
     if (onto != null) {
@@ -306,14 +338,13 @@ class GitClient {
 
     args.add(branch);
 
-    return execute(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+    var code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
   Future<bool> revert(String commit) {
     var args = ["revert", commit];
-    
+
     return execute(args).then((code) {
       return code == GitExitCodes.OK;
     });
@@ -339,7 +370,11 @@ class GitClient {
     });
   }
 
-  Future<bool> gc({bool aggressive: false, bool auto: false, bool force: false}) {
+  Future<bool> gc({
+    bool aggressive: false,
+    bool auto: false,
+    bool force: false
+  }) async {
     var args = ["gc"];
 
     if (aggressive) {
@@ -354,20 +389,21 @@ class GitClient {
       args.add("--force");
     }
 
-    return execute(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
-  bool mv(String path, String destination) {
-    return executeSync(["mv", path, destination]).exitCode == GitExitCodes.OK;
+  Future<bool> mv(String path, String destination) async {
+    var code = await execute(["mv", path, destination]);
+    return code == GitExitCodes.OK;
   }
 
-  String currentBranch() {
-    return executeSync(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
+  Future<String> currentBranch() async {
+    var result = await executeResult(["rev-parse", "--abbrev-ref", "HEAD"]);
+    return result.stdout.trim();
   }
 
-  Future<String> parseRev(String input, {bool abbrevRef: false}) {
+  Future<String> parseRev(String input, {bool abbrevRef: false}) async {
     var args = ["rev-parse"];
 
     if (abbrevRef) {
@@ -375,170 +411,194 @@ class GitClient {
     }
 
     args.add(input);
-    return executeResult(args).then((result) {
-      if (result.exitCode != 0) {
-        throw new InvalidRevException(input);
-      } else {
-        return stripNewlines(result.stdout);
-      }
-    });
+
+    ProcessResult result = await executeResult(args);
+    if (result.exitCode != 0) {
+      throw new InvalidRevException(input);
+    } else {
+      return stripNewlines(result.stdout);
+    }
   }
 
-  Future<bool> fetch(String remote) {
-    return execute(["fetch", remote]).then((code) {
-      return code == GitExitCodes.OK;
-    });
+  Future<bool> fetch(String remote) async {
+    var args = ["fetch", remote];
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
-  Future<bool> addRemote(String name, String url) {
-    return execute(["remote", "add", name, url]).then((code) {
-      return code == GitExitCodes.OK;
-    });
+  Future<bool> addRemote(String name, String url) async {
+    var args = ["remote", "add", name, url];
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
-  Future<bool> removeRemote(String name) {
-    return execute(["remote", "remove", name]).then((code) {
-      return code == GitExitCodes.OK;
-    });
+  Future<bool> removeRemote(String name) async {
+    var args = ["remote", "remove", name];
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
 
-  Future<bool> createBranch(String name, {String from}) {
+  Future<bool> createBranch(String name, {String from}) async {
     var args = ["branch", name];
     if (from != null) {
       args.add(from);
     }
-    return execute(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
-  
-  Future<bool> fsck({bool full: false, bool strict: false}) {
+
+  Future<bool> fsck({bool full: false, bool strict: false}) async {
     var args = ["fsck"];
-    
+
     if (full) {
       args.add("--full");
     }
-    
+
     if (strict) {
       args.add("--strict");
     }
-    
-    return executeResult(args).then((result) => result.exitCode == 0);
+
+    int code = await execute(args);
+    return code == GitExitCodes.OK;
   }
-  
-  Future<List<GitRef>> listRemoteRefs({String url}) {
-    return executeResult(["ls-remote"]..addAll(url != null ? [url] : [])).then((result) {
-      List<String> refLines = result.stdout.split("\n");
-      var refs = [];
-      for (var line in refLines) {
-        if (line.trim().isEmpty) continue;
 
-        var ref = new GitRef(this);
+  Future<List<GitRef>> listRemoteRefs({String url}) async {
+    var args = ["ls-remote"];
+    if (url != null) {
+      args.add(url);
+    }
 
-        var parts = line.split(new RegExp(r"\t| "))..removeWhere((it) => it.trim().isEmpty);
+    ProcessResult result = await executeResult(args);
+    List<String> refLines = result.stdout.split("\n");
+    var refs = [];
+    for (var line in refLines) {
+      if (line.trim().isEmpty) continue;
 
-        ref.commitSha = parts[0];
-        ref.ref = parts[1];
+      var ref = new GitRef(this);
 
-        refs.add(ref);
+      var parts = line.split(_TAB_SPACE);
+      parts.removeWhere((it) => it.trim().isEmpty);
+
+      ref.commitSha = parts[0];
+      ref.ref = parts[1];
+
+      refs.add(ref);
+    }
+
+    return refs;
+  }
+
+  Future<List<String>> listBranches({String remote}) async {
+    var refs = await listRefs();
+
+    return refs.where((it) {
+      bool valid = it.isCommit;
+      if (remote != null) {
+        valid = valid && it.remote == remote;
       }
-
-      return refs;
-    });
+      return valid;
+    }).map((it) => it.name).toList();
   }
 
-  Future<List<String>> listBranches({String remote}) {
-    return listRefs().then((refs) {
-      return refs.where((it) {
-        return it.remote == remote && it.isCommit;
-      });
-    }).then((refs) {
-      return refs.map((it) => it.name).toList();
-    });
+  Future<List<GitRef>> listRefs() async {
+    var result = await executeResult(["for-each-ref"]);
+    List<String> refLines = result.stdout.split("\n");
+    var refs = [];
+    for (var line in refLines) {
+      if (line.trim().isEmpty) continue;
+
+      var ref = new GitRef(this);
+
+      var parts = line.split(" ");
+
+      ref.commitSha = parts[0];
+      ref.type = parts[1];
+      ref.ref = parts[2];
+
+      refs.add(ref);
+    }
+
+    return refs;
   }
 
-  Future<List<GitRef>> listRefs() {
-    return executeResult(["for-each-ref"]).then((result) {
-      List<String> refLines = result.stdout.split("\n");
-      var refs = [];
-      for (var line in refLines) {
-        if (line.trim().isEmpty) continue;
-
-        var ref = new GitRef(this);
-
-        var parts = line.split(" ");
-
-        ref.commitSha = parts[0];
-        ref.type = parts[1];
-        ref.ref = parts[2];
-
-        refs.add(ref);
-      }
-
-      return refs;
-    });
-  }
-
-  Future<bool> createTag(String name, {String commit}) {
+  Future createTag(String name, {String commit}) async {
     var args = ["tag", name];
     if (commit != null) {
       args.add(commit);
     }
-    return execute(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+    var code = await execute(args);
+    checkError(code, "Failed to create tag ${name}");
   }
 
-  Future<List<String>> listTags() {
-    return listRefs().then((refs) {
-      return refs.where((it) => it.isTag).map((it) => it.name).toSet().toList();
-    });
+  Future<List<String>> listTags() async {
+    var refs = await listRefs();
+    return refs
+        .where((it) => it.isTag)
+        .map((it) => it.name)
+        .toSet()
+        .toList();
   }
 
-  Future<bool> deleteTag(String name) {
-    return execute(["tag", "-d", name]).then((code) {
-      return code == GitExitCodes.OK;
-    });
+  Future deleteTag(String name) async {
+    var code = await execute(["tag", "-d", name]);
+    checkError(code, "Failed to delete tag ${name}");
   }
 
-  Future<bool> deleteBranch(String name) {
-    return execute(["branch", "-d", name]).then((code) {
-      return code == GitExitCodes.OK;
-    });
+  Future deleteBranch(String name) async {
+    var code = await execute(["branch", "-d", name]);
+    checkError(code, "Failed to delete branch ${name}");
   }
-  
+
   Future<Process> executeSpawn(List<String> args) {
     return Process.start("git", args, workingDirectory: directory.path);
   }
 
-  Future<int> execute(List<String> args) {
-    return Process.start("git", args, workingDirectory: directory.path).then((process) {
-      if (!quiet) {
-        inheritIO(process, lineBased: false);
-      }
-      return process.exitCode;
-    });
+  Future<int> execute(List<String> args) async {
+    Process process = await Process.start(
+      "git",
+      args,
+      workingDirectory: directory.path
+    );
+    return process.exitCode;
   }
 
   Future<ProcessResult> executeResult(List<String> args, {bool binary: false}) {
-    return Process.run("git", args, workingDirectory: directory.path, stdoutEncoding: binary ? null : SYSTEM_ENCODING);
-  }
-  
-  ProcessResult executeSync(List<String> args) {
-    return Process.runSync("git", args, workingDirectory: directory.path);
-  }
-  
-  Future<bool> pushMirror(String url) {
-    return execute(["push", "--mirror", url]).then((code) {
-      return code == GitExitCodes.OK;
-    });
-  }
-  
-  Future<bool> init({bool bare: false}) {
-    return execute(["init"]..addAll(bare ? ["--bare"] : [])).then((code) => code == GitExitCodes.OK);
+    return Process.run(
+        "git",
+        args,
+        workingDirectory: directory.path,
+        stdoutEncoding: binary ? null : SYSTEM_ENCODING
+    );
   }
 
-  Future<GitCommit> getCommit(String commitSha) {
-    return listCommits(limit: 1, range: commitSha).then((commits) => commits.first);
+  Future pushMirror(String url) async {
+    var code = await execute(["push", "--mirror", url]);
+    checkError(code, "Failed to push mirror to ${url}");
+  }
+
+  Future init({bool bare: false}) async {
+    var args = ["init"];
+
+    if (bare) {
+      args.add("--bare");
+    }
+
+    var code = await execute(args);
+    checkError(code, "Failed to init repository.");
+  }
+
+  Future<GitCommit> getCommit(String commitSha) async {
+    var commits = await listCommits(limit: 1, range: commitSha);
+    if (commits.length != 1) {
+      throw new GitException("Unknown Commit: ${commitSha}");
+    }
+    return commits.first;
+  }
+
+  checkError(int code, String message) {
+    if (code != GitExitCodes.OK) {
+      throw new GitException(message);
+    }
   }
 }

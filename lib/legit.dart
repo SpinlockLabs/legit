@@ -4,7 +4,8 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
-import "src/utils.dart";
+import "utils.dart";
+import "io.dart";
 
 part "src/client.dart";
 part "src/commits.dart";
