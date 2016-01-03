@@ -38,6 +38,14 @@ class GitClient {
     }
   }
 
+  Directory getRealDirectory(String path) {
+    return new Directory(pathlib.join(directory.path, path));
+  }
+
+  File getRealFile(String path) {
+    return new File(pathlib.join(directory.path, path));
+  }
+
   static Future<GitClient> cloneRepositoryTo(String url, String path, {
     bool bare: false,
     bool recursive: false,
@@ -185,43 +193,40 @@ class GitClient {
       .map((it) => it.trim())
       .map((it) => it.split(" ")..removeWhere((m) {
       return m.trim().isEmpty;
-    }))
-      .where((it) => it.isNotEmpty)
-      .map((it) {
+    })).where((it) => it.isNotEmpty).map((it) {
       return new GitTreeFile(it[2], it[3]);
     }).toList();
   }
 
-  Future<List<int>> getBinaryBlob(String blob) {
-    return execute(["cat-file", "blob", blob], binary: true).then((result) {
-      if (result.exitCode != 0) {
-        throw new Exception("Blob not Found");
-      }
+  Future<List<int>> getBinaryBlob(String blob) async {
+    var args = ["cat-file", "blob", blob];
+    var result = await execute(args, binary: true);
+    if (result.exitCode != 0) {
+      throw new GitException("Blob not Found");
+    }
 
-      return result.stdout;
-    });
+    return result.stdout;
   }
 
-  Future<String> getTextBlob(String blob) {
-    return getBinaryBlob(blob).then((content) => UTF8.decode(content));
+  Future<String> getTextBlob(String blob) async {
+    var binary = await getBinaryBlob(blob);
+    return const Utf8Decoder(allowMalformed: true).convert(binary);
   }
 
-  Future<GitCommit> commit(String message) {
+  Future<GitCommit> commit(String message) async {
     var args = ["commit", "-m", message];
 
-    return execute(args).then((result) {
-      if (result.exitCode != 0) {
-        return null;
-      } else {
-        return listCommits(limit: 1);
-      }
-    }).then((commits) {
+    var result = await execute(args);
+    if (result.exitCode != 0) {
+      return null;
+    } else {
+      var commits = await listCommits(limit: 1);
       if (commits == null) {
         return null;
       } else {
         return commits[0];
       }
-    });
+    }
   }
 
   Future<List<GitCommit>> listCommits({int limit, String range, String file}) async {
@@ -438,8 +443,8 @@ class GitClient {
   }
 
   Future<bool> isRepository() async {
-    var code = await executeSimple(["status"]);
-    return code != GitExitCodes.STATUS_NOT_A_GIT_REPOSITORY;
+    var result = await execute(["status"]);
+    return result.exitCode == GitExitCodes.OK;
   }
 
   Future rebase(String branch, {String onto, String upstream}) async {
@@ -757,9 +762,44 @@ class GitClient {
     }
   }
 
-  static handleProcess(handler, {bool inherit: false}) {
+  Future delete() async {
+    await directory.delete(recursive: true);
+  }
+
+  Future<GitClient> createWorktree(String path, {
+    String branch,
+    bool force: true,
+    bool detach: false
+  }) async {
+    var args = ["worktree", "add"];
+
+    if (force) {
+      args.add("--force");
+    }
+
+    if (detach) {
+      args.add("--detatch");
+    }
+
+    args.add(path);
+    if (branch != null) {
+      args.add(branch);
+    }
+
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to create worktree at ${path}");
+    return new GitClient.forPath(path);
+  }
+
+  static handleProcess(handler, {
+    bool inherit: false,
+    File logFile,
+    LogHandler logHandler
+  }) {
     var adapter = new ProcessAdapterReferences();
     adapter.flags.inherit = inherit;
+    adapter.flags.logFile = logFile;
+    adapter.flags.logHandler = logHandler;
     return runZoned(() {
       if (handler is ProcessAdapterHandler) {
         return handler(adapter);

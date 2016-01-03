@@ -4,10 +4,13 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
+import "id.dart";
+
 typedef ProcessResultHandler(BetterProcessResult result);
 typedef ProcessHandler(Process process);
 typedef OutputHandler(String string);
 typedef ProcessAdapterHandler(ProcessAdapterReferences adapter);
+typedef LogHandler(String message);
 
 Stdin get _stdin => stdin;
 
@@ -20,6 +23,8 @@ class BetterProcessResult extends ProcessResult {
 
 class ProcessAdapterFlags {
   bool inherit = false;
+  File logFile;
+  LogHandler logHandler;
 }
 
 class ProcessAdapterReferences {
@@ -82,9 +87,15 @@ Future<BetterProcessResult> executeCommand(String executable,
     bool writeToBuffer: false,
     bool binary: false,
     ProcessResultHandler resultHandler,
-    bool inheritStdin: false
+    bool inheritStdin: false,
+    LogHandler logHandler
   }) async {
   ProcessAdapterReferences refs = Zone.current["legit.io.process.ref"];
+
+  if (refs != null) {
+    outputFile = outputFile != null ? outputFile : refs.flags.logFile;
+    logHandler = logHandler != null ? logHandler : refs.flags.logHandler;
+  }
 
   IOSink raf;
 
@@ -104,6 +115,8 @@ Future<BetterProcessResult> executeCommand(String executable,
       runInShell: runInShell
     );
 
+    var id = process.pid.toString();
+
     if (refs != null) {
       refs.pushProcess(process);
       inherit = inherit || refs.flags.inherit;
@@ -111,7 +124,14 @@ Future<BetterProcessResult> executeCommand(String executable,
 
     if (raf != null) {
       await raf.writeln(
-        "[${currentTimestamp}] == Executing ${executable}"
+        "[${currentTimestamp}][${id}] == Executing ${executable}"
+          " with arguments ${args} (pid: ${process.pid}) =="
+      );
+    }
+
+    if (logHandler != null) {
+      logHandler(
+        "[${currentTimestamp}][${id}] == Executing ${executable}"
           " with arguments ${args} (pid: ${process.pid}) =="
       );
     }
@@ -125,10 +145,13 @@ Future<BetterProcessResult> executeCommand(String executable,
     var sbytes = <int>[];
 
     if (!binary) {
-      process.stdout.transform(const Utf8Decoder(allowMalformed: true)).listen((str) async {
+      process.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter())
+        .listen((str) async {
         if (writeToBuffer) {
-          ob.write(str);
-          buff.write(str);
+          ob.writeln(str);
+          buff.writeln(str);
         }
 
         if (stdoutHandler != null) {
@@ -140,18 +163,25 @@ Future<BetterProcessResult> executeCommand(String executable,
         }
 
         if (inherit) {
-          stdout.write(str);
+          stdout.writeln(str);
         }
 
         if (raf != null) {
-          await raf.writeln("[${currentTimestamp}] ${str}");
+          await raf.writeln("[${currentTimestamp}][${id}] ${str}");
+        }
+
+        if (logHandler != null) {
+          logHandler("[${currentTimestamp}][${id}] ${str}");
         }
       });
 
-      process.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen((str) async {
+      process.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter())
+        .listen((str) async {
         if (writeToBuffer) {
-          eb.write(str);
-          buff.write(str);
+          eb.writeln(str);
+          buff.writeln(str);
         }
 
         if (stderrHandler != null) {
@@ -163,11 +193,15 @@ Future<BetterProcessResult> executeCommand(String executable,
         }
 
         if (inherit) {
-          stderr.write(str);
+          stderr.writeln(str);
         }
 
         if (raf != null) {
-          await raf.writeln("[${currentTimestamp}] ${str}");
+          await raf.writeln("[${currentTimestamp}][${id}] ${str}");
+        }
+
+        if (logHandler != null) {
+          logHandler("[${currentTimestamp}][${id}] ${str}");
         }
       });
     } else {
@@ -200,14 +234,19 @@ Future<BetterProcessResult> executeCommand(String executable,
     }
 
     var code = await process.exitCode;
+    await new Future.delayed(const Duration(milliseconds: 1));
     var pid = process.pid;
 
     if (raf != null) {
       await raf.writeln(
-        "[${currentTimestamp}] == Exited with status ${code} =="
+        "[${currentTimestamp}][${id}] == Exited with status ${code} =="
       );
       await raf.flush();
       await raf.close();
+    }
+
+    if (logHandler != null) {
+      logHandler("[${currentTimestamp}][${id}] == Exited with status ${code} ==");
     }
 
     var result = new BetterProcessResult(

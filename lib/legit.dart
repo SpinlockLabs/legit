@@ -4,6 +4,8 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
+import "package:path/path.dart" as pathlib;
+
 import "utils.dart";
 import "io.dart";
 
