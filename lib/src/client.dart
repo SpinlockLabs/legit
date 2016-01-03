@@ -433,7 +433,7 @@ class GitClient {
     var result = await execute(args);
     checkError(
       result.exitCode,
-      "Failed to add ${path}."
+      "Failed to remove ${path}."
     );
   }
 
@@ -693,13 +693,17 @@ class GitClient {
   }
 
   Future deleteTag(String name) async {
-    var code = await executeSimple(["tag", "-d", name]);
-    checkError(code, "Failed to delete tag ${name}");
+    var result = await execute(["tag", "-d", name]);
+    checkError(result.exitCode, "Failed to delete tag ${name}");
   }
 
-  Future deleteBranch(String name) async {
-    var code = await executeSimple(["branch", "-d", name]);
-    checkError(code, "Failed to delete branch ${name}");
+  Future deleteBranch(String name, {bool force: false}) async {
+    var result = await execute([
+      "branch",
+      force ? "-D" : "-d",
+      name
+    ]);
+    checkError(result.exitCode, "Failed to delete branch ${name}");
   }
 
   Future<int> executeSimple(List<String> args) async {
@@ -767,10 +771,13 @@ class GitClient {
   }
 
   Future<GitClient> createWorktree(String path, {
+    String source,
     String branch,
     bool force: true,
     bool detach: false
   }) async {
+    path = pathlib.join(directory.path, path);
+
     var args = ["worktree", "add"];
 
     if (force) {
@@ -781,9 +788,13 @@ class GitClient {
       args.add("--detatch");
     }
 
-    args.add(path);
     if (branch != null) {
-      args.add(branch);
+      args.addAll(["-b", branch]);
+    }
+
+    args.add(path);
+    if (source != null) {
+      args.add(source);
     }
 
     var result = await execute(args);
@@ -791,7 +802,13 @@ class GitClient {
     return new GitClient.forPath(path);
   }
 
-  static handleProcess(handler, {
+  Future pruneWorktrees() async {
+    var args = ["worktree", "prune"];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to prune worktrees.");
+  }
+
+  static handleConfigure(handler, {
     bool inherit: false,
     File logFile,
     LogHandler logHandler

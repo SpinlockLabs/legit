@@ -2,25 +2,29 @@ import "dart:async";
 import "dart:io";
 
 import "package:legit/legit.dart";
+import "package:legit/id.dart";
 
 main() async {
-  await GitClient.handleProcess(handle, logHandler: (String message) {
-    print(message);
-  });
+  await GitClient.handleConfigure(handle, logHandler: print);
 }
 
 handle() async {
-  var git = await GitClient.openOrCloneRepository(
+  var gitA = await GitClient.openOrCloneRepository(
     "https://github.com/DirectMyFile/legit-test.git",
     "test"
   );
+
+  var id = await generateStrongToken();
+  var git = await gitA.createWorktree("../tmp", branch: id);
 
   var counter = await incrementCounterFile(
     git.getRealFile("counter")
   );
   await git.add("counter");
   await git.commit("Increment Counter to ${counter}");
-  await git.push();
+  await git.delete();
+  await gitA.pruneWorktrees();
+  await gitA.deleteBranch(id, force: true);
 }
 
 Future<int> incrementCounterFile(File file) async {
