@@ -12,13 +12,13 @@ class GitCommit {
   DateTime authoredAt;
   DateTime committedAt;
   GitAuthor committer;
-  
-  String get prettySha => new List.generate(sha.length, (i) => sha[i]).take(10).join();
+
+  String get prettySha => new List<String>.generate(10, (i) => sha[i]).join();
 }
 
 class GitAuthor {
   final GitClient git;
-  
+
   GitAuthor(this.git);
 
   String name;

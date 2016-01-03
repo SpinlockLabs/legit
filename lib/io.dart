@@ -4,8 +4,10 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
-typedef void ProcessHandler(Process process);
-typedef void OutputHandler(String str);
+typedef ProcessResultHandler(BetterProcessResult result);
+typedef ProcessHandler(Process process);
+typedef OutputHandler(String string);
+typedef ProcessAdapterHandler(ProcessAdapterReferences adapter);
 
 Stdin get _stdin => stdin;
 
@@ -14,6 +16,53 @@ class BetterProcessResult extends ProcessResult {
 
   BetterProcessResult(int pid, int exitCode, stdout, stderr, this.output)
     : super(pid, exitCode, stdout, stderr);
+}
+
+class ProcessAdapterFlags {
+  bool inherit = false;
+}
+
+class ProcessAdapterReferences {
+  BetterProcessResult result;
+  Process process;
+  ProcessAdapterFlags flags = new ProcessAdapterFlags();
+
+  Future<BetterProcessResult> get onResultReady {
+    if (result != null) {
+      return new Future.value(result);
+    } else {
+      var c = new Completer<BetterProcessResult>();
+      _onResultReady.add(c.complete);
+      return c.future;
+    }
+  }
+
+  Future<Process> get onProcessReady {
+    if (process != null) {
+      return new Future.value(process);
+    } else {
+      var c = new Completer<Process>();
+      _onProcessReady.add(c.complete);
+      return c.future;
+    }
+  }
+
+  List<ProcessResultHandler> _onResultReady = [];
+  List<ProcessHandler> _onProcessReady = [];
+
+  void pushProcess(Process process) {
+    this.process = process;
+    while (_onProcessReady.isNotEmpty) {
+      _onProcessReady.removeAt(0)(result);
+    }
+  }
+
+  void pushResult(BetterProcessResult result) {
+    this.result = result;
+    while (_onResultReady.isNotEmpty) {
+      _onResultReady.removeAt(0)(result);
+    }
+  }
 }
 
 Future<BetterProcessResult> executeCommand(String executable,
@@ -30,8 +79,13 @@ Future<BetterProcessResult> executeCommand(String executable,
     OutputHandler outputHandler,
     File outputFile,
     bool inherit: false,
-    bool writeToBuffer: false
+    bool writeToBuffer: false,
+    bool binary: false,
+    ProcessResultHandler resultHandler,
+    bool inheritStdin: false
   }) async {
+  ProcessAdapterReferences refs = Zone.current["legit.io.process.ref"];
+
   IOSink raf;
 
   if (outputFile != null) {
@@ -47,7 +101,13 @@ Future<BetterProcessResult> executeCommand(String executable,
       workingDirectory: workingDirectory,
       environment: environment,
       includeParentEnvironment: includeParentEnvironment,
-      runInShell: runInShell);
+      runInShell: runInShell
+    );
+
+    if (refs != null) {
+      refs.pushProcess(process);
+      inherit = inherit || refs.flags.inherit;
+    }
 
     if (raf != null) {
       await raf.writeln(
@@ -60,51 +120,67 @@ Future<BetterProcessResult> executeCommand(String executable,
     var ob = new StringBuffer();
     var eb = new StringBuffer();
 
-    process.stdout.transform(const Utf8Decoder()).listen((str) async {
-      if (writeToBuffer) {
-        ob.write(str);
-        buff.write(str);
-      }
+    var obytes = <int>[];
+    var ebytes = <int>[];
+    var sbytes = <int>[];
 
-      if (stdoutHandler != null) {
-        stdoutHandler(str);
-      }
+    if (!binary) {
+      process.stdout.transform(const Utf8Decoder(allowMalformed: true)).listen((str) async {
+        if (writeToBuffer) {
+          ob.write(str);
+          buff.write(str);
+        }
 
-      if (outputHandler != null) {
-        outputHandler(str);
-      }
+        if (stdoutHandler != null) {
+          stdoutHandler(str);
+        }
 
-      if (inherit) {
-        stdout.write(str);
-      }
+        if (outputHandler != null) {
+          outputHandler(str);
+        }
 
-      if (raf != null) {
-        await raf.writeln("[${currentTimestamp}] ${str}");
-      }
-    });
+        if (inherit) {
+          stdout.write(str);
+        }
 
-    process.stderr.transform(const Utf8Decoder()).listen((str) async {
-      if (writeToBuffer) {
-        eb.write(str);
-        buff.write(str);
-      }
+        if (raf != null) {
+          await raf.writeln("[${currentTimestamp}] ${str}");
+        }
+      });
 
-      if (stderrHandler != null) {
-        stderrHandler(str);
-      }
+      process.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen((str) async {
+        if (writeToBuffer) {
+          eb.write(str);
+          buff.write(str);
+        }
 
-      if (outputHandler != null) {
-        outputHandler(str);
-      }
+        if (stderrHandler != null) {
+          stderrHandler(str);
+        }
 
-      if (inherit) {
-        stderr.write(str);
-      }
+        if (outputHandler != null) {
+          outputHandler(str);
+        }
 
-      if (raf != null) {
-        await raf.writeln("[${currentTimestamp}] ${str}");
-      }
-    });
+        if (inherit) {
+          stderr.write(str);
+        }
+
+        if (raf != null) {
+          await raf.writeln("[${currentTimestamp}] ${str}");
+        }
+      });
+    } else {
+      process.stdout.listen((bytes) {
+        obytes.addAll(bytes);
+        sbytes.addAll(bytes);
+      });
+
+      process.stderr.listen((bytes) {
+        obytes.addAll(bytes);
+        ebytes.addAll(bytes);
+      });
+    }
 
     if (handler != null) {
       handler(process);
@@ -119,7 +195,7 @@ Future<BetterProcessResult> executeCommand(String executable,
         process.stdin.write(stdin);
         await process.stdin.close();
       }
-    } else if (inherit) {
+    } else if (inheritStdin) {
       _stdin.listen(process.stdin.add, onDone: process.stdin.close);
     }
 
@@ -134,13 +210,23 @@ Future<BetterProcessResult> executeCommand(String executable,
       await raf.close();
     }
 
-    return new BetterProcessResult(
+    var result = new BetterProcessResult(
       pid,
       code,
-      ob.toString(),
-      eb.toString(),
-      buff.toString()
+      binary ? sbytes : ob.toString(),
+      binary ? ebytes : eb.toString(),
+      binary ? obytes : buff.toString()
     );
+
+    if (resultHandler != null) {
+      resultHandler(result);
+    }
+
+    if (refs != null) {
+      refs.pushResult(result);
+    }
+
+    return result;
   } finally {
     if (raf != null) {
       await raf.flush();

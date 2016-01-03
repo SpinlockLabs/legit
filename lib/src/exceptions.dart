@@ -4,6 +4,9 @@ class GitException {
   final String message;
 
   GitException(this.message);
+
+  @override
+  String toString() => message;
 }
 
 class InvalidRevException extends GitException {
