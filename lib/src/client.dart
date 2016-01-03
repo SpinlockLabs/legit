@@ -540,6 +540,27 @@ class GitClient {
     return result.stdout.trim();
   }
 
+  Future<List<String>> listObjects() async {
+    var result = await execute([
+      "rev-list",
+      "--objects",
+      "--all"
+    ]);
+
+    checkError(result.exitCode, "Failed to list objects.");
+    return result.stdout.toString().split("\n").map((String m) {
+      return m.trim();
+    }).map((String m) {
+      var idx = m.indexOf(" ");
+      if (idx == -1) {
+        idx = m.length;
+      }
+      return m.substring(0, idx);
+    }).where((String m) {
+      return m.isNotEmpty;
+    }).toList();
+  }
+
   Future<String> parseRev(String input, {bool abbrevRef: false}) async {
     var args = ["rev-parse"];
 
