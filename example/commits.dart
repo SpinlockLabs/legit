@@ -1,7 +1,7 @@
 import "package:legit/legit.dart";
 
 main() async {
-  var git = new GitClient();
+  var git = new GitClient.forCurrentDirectory();
 
   var commits = await git.listCommits();
   for (var commit in commits) {

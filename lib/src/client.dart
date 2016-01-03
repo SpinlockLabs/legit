@@ -27,8 +27,8 @@ class GitClient {
     return new GitClient.forPath(path);
   }
 
-  static Future<GitClient> openOrClone(String url, String path, {
-  bool bare: false
+  static Future<GitClient> openOrCloneRepository(String url, String path, {
+    bool bare: false
   }) async {
     var client = new GitClient.forPath(path);
     if (await client.directory.exists() && await client.isRepository()) {
@@ -39,10 +39,10 @@ class GitClient {
   }
 
   static Future<GitClient> cloneRepositoryTo(String url, String path, {
-  bool bare: false,
-  bool recursive: false,
-  bool mirror: false,
-  bool overwrite: false
+    bool bare: false,
+    bool recursive: false,
+    bool mirror: false,
+    bool overwrite: false
   }) async {
     var client = new GitClient.forPath(path);
 
@@ -63,15 +63,15 @@ class GitClient {
   }
 
   Future clone(String url, {
-  String branch,
-  bool bare: false,
-  bool mirror: false,
-  bool recursive: false,
-  int depth,
-  bool checkout: true,
-  String reference,
-  bool local: false,
-  bool dissociate: false
+    String branch,
+    bool bare: false,
+    bool mirror: false,
+    bool recursive: false,
+    int depth,
+    bool checkout: true,
+    String reference,
+    bool local: false,
+    bool dissociate: false
   }) async {
     var args = ["clone", url];
 
@@ -121,8 +121,8 @@ class GitClient {
   }
 
   Future<String> hashObject(content, {
-  String type,
-  bool write: true
+    String type,
+    bool write: true
   }) async {
     if (content is! String && content is! List<int>) {
       throw new ArgumentError("Invalid Content");
@@ -148,20 +148,28 @@ class GitClient {
   Future<String> createPatch(String ref) async {
     var args = ["format-patch", ref, "--stdout"];
     var result = await execute(args);
-    if (result.exitCode != GitExitCodes.OK) {
-      throw new GitException("Failed to generate patch.");
-    }
-
+    checkError(result.exitCode, "Failed to generate patch.");
     return result.stdout;
   }
 
   Future<String> createDiff(String from, String to) async {
     var args = ["diff", from, to];
     var result = await execute(args);
-    if (result.exitCode != GitExitCodes.OK) {
-      return null;
-    }
+    checkError(result.exitCode, "Failed to generate diff.");
     return result.stdout.toString();
+  }
+
+  Future<List<String>> listFiles({GitListFilesType type}) async {
+    var args = ["ls-files"];
+    if (type != null) {
+      var name = type.toString().split(".").last.toLowerCase();
+      args.add("--${name}");
+    }
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to list files.");
+    return result.stdout.toString().split("\n").where((x) {
+      return x.trim().isEmpty;
+    }).toList();
   }
 
   Future<List<GitTreeFile>> listTree(String ref) async {
@@ -267,11 +275,11 @@ class GitClient {
   }
 
   Future<GitMergeResult> merge(String ref, {
-  String into,
-  String message,
-  bool fastForward: false,
-  bool fastForwardOnly: false,
-  String strategy
+    String into,
+    String message,
+    bool fastForward: false,
+    bool fastForwardOnly: false,
+    String strategy
   }) async {
     var args = ["merge"];
 
@@ -297,62 +305,86 @@ class GitClient {
 
     args.add(ref);
 
-    ProcessResult proc = await execute(args);
+    BetterProcessResult proc = await execute(args);
     var result = new GitMergeResult();
     result.code = proc.exitCode;
-    if (result.code == 1 && proc.stdout.toString().contains("CONFLICT")) {
+    if (result.code != 0 && proc.stdout.toString().contains("CONFLICT")) {
       result.conflicts = true;
     }
     return result;
   }
 
-  Future<bool> filterBranch(String ref, String command) {
-    return executeSimple(["filter-branch", command, ref]).then((code) => code == GitExitCodes.OK);
+  Future filterBranch(String ref, String command) async {
+    var args = ["filter-branch", command, ref];
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to filter-branch with command ${command} and ref ${ref}"
+    );
   }
 
-  Future<String> writeTree() {
-    return execute(["write-tree"]).then((result) {
-      if (result.exitCode != GitExitCodes.OK) {
-        throw new GitException("Failed to write tree.");
-      }
+  Future<String> writeTree() async {
+    var result = await execute(["write-tree"]);
 
-      return result.stdout.trim();
-    });
+    checkError(result.exitCode, "Failed to write-tree.");
+
+    return result.stdout.trim();
   }
 
-  Future<bool> updateServerInfo() {
-    return executeSimple(["update-server-info"]).then((code) => code == GitExitCodes.OK);
+  Future updateServerInfo() async {
+    var args = ["update-server-info"];
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to update server info."
+    );
   }
 
-  Future<bool> push({String remote: "origin", String branch: "HEAD"}) {
-    return executeSimple(["push", remote, branch]).then((code) => code == GitExitCodes.OK);
+  Future push({String remote: "origin", String branch: "HEAD"}) async {
+    var args = ["push", remote, branch];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to push ${branch} to ${remote}");
   }
 
-  Future<bool> pull({bool all: true}) {
+  Future pull({bool all: true}) async {
     var args = ["pull"];
     if (all) {
       args.add("--all");
     }
-    return executeSimple(args).then((code) => code == GitExitCodes.OK);
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to pull.");
   }
 
-  Future<bool> abortMerge() {
-    return executeSimple(["merge", "--abort"]).then((code) => code == GitExitCodes.OK);
+  Future abortMerge() async {
+    var args = ["merge", "--abort"];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to abort merge.");
   }
 
-  Future<bool> cherryPick(String commit) {
-    return executeSimple(["cherry-pick", commit]).then((code) => code == 0);
+  Future<GitMergeResult> cherryPick(String commit) async {
+    var args = ["cherry-pick", commit];
+    BetterProcessResult r = await execute(args);
+    var result = new GitMergeResult();
+    result.code = r.exitCode;
+    if (result.code != 0 && r.stdout.toString().contains("CONFLICT")) {
+      result.conflicts = true;
+    }
+    return result;
   }
 
-  Future<bool> abortCherryPick() {
-    return executeSimple(["cherry-pick", "--abort"]).then((code) => code == 0);
+  Future abortCherryPick() async {
+    var args = ["cherry-pick", "--abort"];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to abort cherry pick.");
   }
 
-  Future<bool> quitCherryPick() {
-    return executeSimple(["cherry-pick", "--quit"]).then((code) => code == 0);
+  Future quitCherryPick() async {
+    var args = ["cherry-pick", "--quit"];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to quit cherry pick.");
   }
 
-  Future<bool> checkout(String branch, {bool create: false, String from}) {
+  Future checkout(String branch, {bool create: false, String from}) async {
     var args = ["checkout"];
 
     if (create) {
@@ -365,15 +397,23 @@ class GitClient {
       args.add(from);
     }
 
-    return executeSimple(args).then((code) => code == GitExitCodes.OK);
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to checkout ${branch}."
+    );
   }
 
-  Future<bool> add(String path) async {
-    var code = await executeSimple(["add", path]);
-    return code == GitExitCodes.OK;
+  Future add([String path = "."]) async {
+    var args = ["add", directory.path];
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to add ${path}."
+    );
   }
 
-  Future<bool> rm(String path, {bool recursive: false, bool force: false}) async {
+  Future rm(String path, {bool recursive: false, bool force: false}) async {
     var args = ["rm"];
 
     if (recursive) {
@@ -385,13 +425,16 @@ class GitClient {
     }
 
     args.add(path);
-    var code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to add ${path}."
+    );
   }
 
   Future<bool> hasRemote(String remote) async {
     var result = await execute(["remote"]);
-    return result.stdout.split(" ").contains(remote);
+    return result.stdout.toString().split(_TAB_SPACE).contains(remote);
   }
 
   Future<bool> isRepository() async {
@@ -399,7 +442,7 @@ class GitClient {
     return code != GitExitCodes.STATUS_NOT_A_GIT_REPOSITORY;
   }
 
-  Future<bool> rebase(String branch, {String onto, String upstream}) async {
+  Future rebase(String branch, {String onto, String upstream}) async {
     var args = ["rebase"];
 
     if (onto != null) {
@@ -412,19 +455,21 @@ class GitClient {
 
     args.add(branch);
 
-    var code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to rebase ${branch}.");
   }
 
-  Future<bool> revert(String commit) {
+  Future revert(String commit) async {
     var args = ["revert", commit];
 
-    return executeSimple(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to revert ${commit}."
+    );
   }
 
-  Future<bool> clean({String path, bool directories: false, bool force: false}) {
+  Future clean({String path, bool directories: false, bool force: false}) async {
     var args = ["clean"];
 
     if (path != null) {
@@ -439,15 +484,17 @@ class GitClient {
       args.add("-f");
     }
 
-    return executeSimple(args).then((code) {
-      return code == GitExitCodes.OK;
-    });
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to clean."
+    );
   }
 
-  Future<bool> gc({
-  bool aggressive: false,
-  bool auto: false,
-  bool force: false
+  Future gc({
+    bool aggressive: false,
+    bool auto: false,
+    bool force: false
   }) async {
     var args = ["gc"];
 
@@ -463,17 +510,28 @@ class GitClient {
       args.add("--force");
     }
 
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to Garbage Collect."
+    );
   }
 
-  Future<bool> mv(String path, String destination) async {
-    var code = await executeSimple(["mv", path, destination]);
-    return code == GitExitCodes.OK;
+  Future mv(String path, String destination) async {
+    var args = ["mv", path, destination];
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to move ${path} to ${destination}."
+    );
   }
 
   Future<String> currentBranch() async {
-    var result = await execute(["rev-parse", "--abbrev-ref", "HEAD"]);
+    var result = await execute([
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD"
+    ]);
     return result.stdout.trim();
   }
 
@@ -494,35 +552,47 @@ class GitClient {
     }
   }
 
-  Future<bool> fetch(String remote) async {
+  Future fetch(String remote) async {
     var args = ["fetch", remote];
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to fetch ${remote}."
+    );
   }
 
-  Future<bool> addRemote(String name, String url) async {
+  Future addRemote(String name, String url) async {
     var args = ["remote", "add", name, url];
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to add remote '${name}' to '${url}'."
+    );
   }
 
-  Future<bool> removeRemote(String name) async {
+  Future removeRemote(String name) async {
     var args = ["remote", "remove", name];
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to remove remote '${name}'."
+    );
   }
 
-  Future<bool> createBranch(String name, {String from}) async {
+  Future createBranch(String name, {String from}) async {
     var args = ["branch", name];
     if (from != null) {
       args.add(from);
     }
 
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to create branch ${name}."
+    );
   }
 
-  Future<bool> fsck({bool full: false, bool strict: false}) async {
+  Future fsck({bool full: false, bool strict: false}) async {
     var args = ["fsck"];
 
     if (full) {
@@ -533,8 +603,11 @@ class GitClient {
       args.add("--strict");
     }
 
-    int code = await executeSimple(args);
-    return code == GitExitCodes.OK;
+    var result = await execute(args);
+    checkError(
+      result.exitCode,
+      "Failed to fsck."
+    );
   }
 
   Future<List<GitRef>> listRemoteRefs({String url}) async {
@@ -636,10 +709,10 @@ class GitClient {
   }
 
   Future<BetterProcessResult> execute(List<String> args, {
-  bool binary: false,
-  OutputHandler outputHandler,
-  stdin,
-  bool writeToBuffer: true
+    bool binary: false,
+    OutputHandler outputHandler,
+    stdin,
+    bool writeToBuffer: true
   }) async {
     var result = await executeCommand(
       "git",

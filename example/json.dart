@@ -8,7 +8,11 @@ main() async {
 }
 
 handle() async {
-  var git = new GitClient.forPath("repositories/git");
+  var git = await GitClient.openOrCloneRepository(
+    "git://github.com/git/git.git",
+    "repositories/git"
+  );
+
   var json = {};
   var refs = json["refs"] = [];
 
@@ -35,7 +39,7 @@ handle() async {
 
   var file = new File("repositories/git.json");
   await file.writeAsString(
-    const JsonEncoder.withIndent("  ").convert(json)
+    const JsonEncoder.withIndent("  ").convert(json) + "\n"
   );
 }
 
