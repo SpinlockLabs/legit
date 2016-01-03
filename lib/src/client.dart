@@ -540,6 +540,42 @@ class GitClient {
     return result.stdout.trim();
   }
 
+  Future<Uint8List> createArchive(String ref, String format, {
+    String prefix
+  }) async {
+    var args = ["archive"];
+    if (prefix != null) {
+      args.addAll(["--prefix", prefix]);
+    }
+    args.addAll(["--format", format]);
+    args.add(ref);
+    var result = await execute(args, binary: true);
+    checkError(result.exitCode, "Failed to create archive.");
+    return new Uint8List.fromList(result.stdout);
+  }
+
+  Future unpackObjects(pack) async {
+    Uint8List data;
+
+    if (pack is Uint8List) {
+      data = pack;
+    } else if (pack is List) {
+      data = new Uint8List.fromList(pack);
+    } else if (pack is File) {
+      data = await pack.readAsBytes();
+    } else if (pack is String) {
+      data = await new File(pack).readAsBytes();
+    } else {
+      throw new GitException("Bad Pack: ${pack}");
+    }
+
+    var result = await execute([
+      "unpack-objects",
+    ], stdin: data);
+
+    checkError(result.exitCode, "Failed to unpack objects.");
+  }
+
   Future<List<String>> listObjects() async {
     var result = await execute([
       "rev-list",

@@ -4,7 +4,7 @@ import "dart:convert";
 import "package:legit/legit.dart";
 
 main() async {
-  await GitClient.handleProcess(handle, inherit: false);
+  await GitClient.handleConfigure(handle, inherit: false);
 }
 
 handle() async {
