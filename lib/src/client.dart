@@ -736,8 +736,8 @@ class GitClient {
     if (commit != null) {
       args.add(commit);
     }
-    var code = await executeSimple(args);
-    checkError(code, "Failed to create tag ${name}");
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to create tag ${name}");
   }
 
   Future<List<String>> listTags() async {
@@ -763,17 +763,6 @@ class GitClient {
     checkError(result.exitCode, "Failed to delete branch ${name}");
   }
 
-  Future<int> executeSimple(List<String> args) async {
-    var result = await executeCommand(
-      "git",
-      args: args,
-      workingDirectory: directory.path,
-      stdin: stdin
-    );
-
-    return result.exitCode;
-  }
-
   Future<BetterProcessResult> execute(List<String> args, {
     bool binary: false,
     OutputHandler outputHandler,
@@ -794,8 +783,9 @@ class GitClient {
   }
 
   Future pushMirror(String url) async {
-    var code = await executeSimple(["push", "--mirror", url]);
-    checkError(code, "Failed to push mirror to ${url}");
+    var args = ["push", "--mirror", url];
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to push mirror to ${url}");
   }
 
   Future init({bool bare: false}) async {
@@ -805,8 +795,8 @@ class GitClient {
       args.add("--bare");
     }
 
-    var code = await executeSimple(args);
-    checkError(code, "Failed to init repository.");
+    var result = await execute(args);
+    checkError(result.exitCode, "Failed to init repository.");
   }
 
   Future<GitCommit> getCommit(String commitSha) async {

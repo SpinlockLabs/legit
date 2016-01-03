@@ -15,6 +15,7 @@ handle() async {
 
   var json = {};
   var refs = json["refs"] = [];
+  var commits = json["commits"] = [];
 
   for (GitRef ref in await git.listRefs()) {
     var map = {
@@ -35,6 +36,10 @@ handle() async {
     }
 
     refs.add(map);
+  }
+
+  for (GitCommit commit in await git.listCommits()) {
+    commits.add(serializeCommit(commit));
   }
 
   var file = new File("repositories/git.json");

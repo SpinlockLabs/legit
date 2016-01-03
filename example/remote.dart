@@ -1,11 +1,10 @@
 import "package:legit/legit.dart";
 
-void main() {
+main() async {
   var git = new GitClient.forCurrentDirectory();
+  var refs = await git.listRemoteRefs();
 
-  git.listRemoteRefs().then((refs) {
-    for (var ref in refs) {
-      print(ref.ref);
-    }
-  });
+  for (var ref in refs) {
+    print(ref.ref);
+  }
 }
