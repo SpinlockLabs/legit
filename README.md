@@ -1,4 +1,4 @@
 # Legit
 
-Legit is a Git Wrapper for Dart.
+Legit is a Git Library for Dart.
 
