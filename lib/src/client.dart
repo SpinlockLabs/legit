@@ -1,7 +1,7 @@
 part of legit;
 
 class GitClient {
-  static final RegExp _TAB_SPACE = new RegExp(r"\t| ");
+  static final RegExp _WHITESPACE = new RegExp(r"\s");
 
   final Directory directory;
 
@@ -28,13 +28,14 @@ class GitClient {
   }
 
   static Future<GitClient> openOrCloneRepository(String url, String path, {
-    bool bare: false
+    bool bare: false,
+    bool mirror: false
   }) async {
     var client = new GitClient.forPath(path);
     if (await client.directory.exists() && await client.isRepository()) {
       return client;
     } else {
-      return await cloneRepositoryTo(url, path, bare: bare);
+      return await cloneRepositoryTo(url, path, bare: bare, mirror: mirror);
     }
   }
 
@@ -345,16 +346,42 @@ class GitClient {
     );
   }
 
-  Future push({String remote: "origin", String branch: "HEAD"}) async {
-    var args = ["push", remote, branch];
+  Future push({String remote: "origin", String branch, bool all: false, bool mirror: false}) async {
+    var args = ["push"];
+    if (remote != null) {
+      args.add(remote);
+    }
+
+    if (branch != null) {
+      args.add(branch);
+    }
+
+    if (all && branch == null) {
+      args.add("--all");
+    }
+
+    if (mirror) {
+      args.add("--mirror");
+    }
+
+    args.add("--porcelain");
+
     var result = await execute(args);
     checkError(result.exitCode, "Failed to push ${branch} to ${remote}");
   }
 
-  Future pull({bool all: true}) async {
+  Future pull({String origin, String branch, bool all: true}) async {
     var args = ["pull"];
     if (all) {
       args.add("--all");
+    }
+
+    if (origin != null) {
+      args.add(origin);
+    }
+
+    if (branch != null) {
+      args.add(branch);
     }
     var result = await execute(args);
     checkError(result.exitCode, "Failed to pull.");
@@ -439,11 +466,11 @@ class GitClient {
 
   Future<bool> hasRemote(String remote) async {
     var result = await execute(["remote"]);
-    return result.stdout.toString().split(_TAB_SPACE).contains(remote);
+    return result.stdout.toString().split(_WHITESPACE).contains(remote);
   }
 
   Future<bool> isRepository() async {
-    var result = await execute(["status"]);
+    var result = await execute(["rev-parse"]);
     return result.exitCode == GitExitCodes.OK;
   }
 
@@ -614,8 +641,17 @@ class GitClient {
     }
   }
 
-  Future fetch(String remote) async {
-    var args = ["fetch", remote];
+  Future fetch({String remote, bool all: true}) async {
+    var args = ["fetch"];
+
+    if (remote != null) {
+      args.add(remote);
+    }
+
+    if (all && remote == null) {
+      args.add("--all");
+    }
+
     var result = await execute(args);
     checkError(
       result.exitCode,
@@ -686,7 +722,7 @@ class GitClient {
 
       var ref = new GitRef(this);
 
-      var parts = line.split(_TAB_SPACE);
+      var parts = line.split(_WHITESPACE);
       parts.removeWhere((it) => it.trim().isEmpty);
 
       ref.commitSha = parts[0];
@@ -719,7 +755,7 @@ class GitClient {
 
       var ref = new GitRef(this);
 
-      var parts = line.split(_TAB_SPACE);
+      var parts = line.split(_WHITESPACE);
 
       ref.commitSha = parts[0];
       ref.type = parts[1];
