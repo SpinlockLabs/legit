@@ -4,7 +4,7 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
-import "id.dart";
+import "utils.dart";
 
 typedef ProcessResultHandler(BetterProcessResult result);
 typedef ProcessHandler(Process process);
@@ -58,7 +58,7 @@ class ProcessAdapterReferences {
   void pushProcess(Process process) {
     this.process = process;
     while (_onProcessReady.isNotEmpty) {
-      _onProcessReady.removeAt(0)(result);
+      _onProcessReady.removeAt(0)(process);
     }
   }
 
@@ -272,8 +272,4 @@ Future<BetterProcessResult> executeCommand(String executable,
       await raf.close();
     }
   }
-}
-
-String get currentTimestamp {
-  return new DateTime.now().toString();
 }
