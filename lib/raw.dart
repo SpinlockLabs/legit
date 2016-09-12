@@ -21,9 +21,8 @@ class GitRawObject {
 
   String get hash {
     if (_hash == null) {
-      var sha = new SHA1();
-      sha.add(encode(false));
-      var hash = CryptoUtils.bytesToHex(sha.close());
+      Digest d = sha1.convert(encode(false));
+      var hash = d.toString();
       _hash = hash;
     }
     return _hash;

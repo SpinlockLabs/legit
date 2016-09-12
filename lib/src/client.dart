@@ -3,6 +3,23 @@ part of legit;
 class GitClient {
   static final RegExp _WHITESPACE = new RegExp(r"\s");
 
+  static String _version;
+  static Future<String> version() async {
+    if (_version == null) {
+      BetterProcessResult rslt = await executeCommand('git', args:['--version']);
+      if (rslt.exitCode == 0 && rslt.output.startsWith('git version ')) {
+        _version = rslt.output.substring(12);
+      } else {
+        _version = '';
+      }
+    }
+    return _version;
+  }
+
+  static Future<bool> supported() async {
+    return (await version()) != '';
+  }
+
   final Directory directory;
 
   factory GitClient.forPath(String path) {

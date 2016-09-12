@@ -58,7 +58,7 @@ class ProcessAdapterReferences {
   void pushProcess(Process process) {
     this.process = process;
     while (_onProcessReady.isNotEmpty) {
-      _onProcessReady.removeAt(0)(result);
+      _onProcessReady.removeAt(0)(process);
     }
   }
 
