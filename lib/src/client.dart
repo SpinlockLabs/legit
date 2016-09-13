@@ -9,7 +9,7 @@ class GitClient {
       try {
 	      BetterProcessResult rslt = await executeCommand('git', args:['--version'], writeToBuffer:true);
 	      if (rslt.exitCode == 0 && rslt.output.startsWith('git version ')) {
-	        _version = rslt.output.substring(12);
+	        _version = rslt.output.substring(12).trim();
 	      } else {
 	        _version = '';
 	      }
@@ -497,7 +497,7 @@ class GitClient {
 
   Future<bool> isRepositoryRoot() async {
     var result = await execute(["rev-parse", "--show-cdup"]);
-    return result.exitCode == GitExitCodes.OK && result.output == "";
+    return result.exitCode == GitExitCodes.OK && result.output.trim() == "";
   }
 
   Future rebase(String branch, {String onto, String upstream}) async {
