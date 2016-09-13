@@ -495,6 +495,11 @@ class GitClient {
     return result.exitCode == GitExitCodes.OK;
   }
 
+  Future<bool> isRepositoryRoot() async {
+    var result = await execute(["rev-parse", "--show-cdup"]);
+    return result.exitCode == GitExitCodes.OK && result.output == "";
+  }
+
   Future rebase(String branch, {String onto, String upstream}) async {
     var args = ["rebase"];
 
