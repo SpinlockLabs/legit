@@ -254,8 +254,9 @@ class GitClient {
   Future<List<GitCommit>> listCommits({int limit, String range, String file, bool detail: false}) async {
     var args = [
       "log",
-      "--format=format:-;;;;-%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B-;;;-",
-      "--no-color"
+      "--format=format:-;;;;-%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%d%n%B-;;;-",
+      "--no-color",
+      "--decorate"
     ];
 
     if (limit != null) {
@@ -317,7 +318,8 @@ class GitClient {
           ..email = parts[5];
         commit.authoredAt = DateTime.parse(parts[6]);
         commit.committedAt = DateTime.parse(parts[7]);
-        commit.message = parts.getRange(8, parts.length).join("\n").trim();
+        commit.setDecorate(parts[8]);
+        commit.message = parts.getRange(9, parts.length).join("\n").trim();
         commits.add(commit);
       }
       return commits;
