@@ -1,5 +1,12 @@
 part of legit;
 
+class GitCommitChange {
+  String name;
+  String change;
+
+  GitCommitChange(this.name, this.change);
+}
+
 class GitCommit {
   final GitClient git;
 
@@ -12,6 +19,8 @@ class GitCommit {
   DateTime authoredAt;
   DateTime committedAt;
   GitAuthor committer;
+
+  List<GitCommitChange> changes;
 
   String get prettySha => new List<String>.generate(10, (i) => sha[i]).join();
 }

@@ -251,10 +251,10 @@ class GitClient {
     }
   }
 
-  Future<List<GitCommit>> listCommits({int limit, String range, String file}) async {
+  Future<List<GitCommit>> listCommits({int limit, String range, String file, bool detail: false}) async {
     var args = [
       "log",
-      "--format=format:%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B%n%n%n%n",
+      "--format=format:-;;;;-%H%n%T%n%aN%n%aE%n%cN%n%cE%n%ai%n%ci%n%B-;;;-",
       "--no-color"
     ];
 
@@ -264,6 +264,9 @@ class GitClient {
 
     if (range != null) {
       args.add(range);
+    }
+    if (detail) {
+      args.add('--name-status');
     }
 
     if (file != null) {
@@ -277,13 +280,33 @@ class GitClient {
     } else {
       String output = result.stdout.toString();
       var commits = [];
-      List<String> clines = output.split("\n\n\n\n\n")
+      List<String> clines = output.split("-;;;;-")
         .map((it) => it.trim())
         .toList();
       clines.removeWhere((it) => it.isEmpty || !it.contains("\n"));
-      for (var line in clines) {
+
+      for (String line in clines) {
+        List changes;
+
+        // split info and changes
+        List linechange = line.split('-;;;-');
+        line = linechange[0];
+
+        if (detail) {
+          changes = [];
+          String changeStr = linechange[1];
+          List changesRaw = changeStr.split('\n');
+          for (String change in changesRaw) {
+            List changeSplit = change.split('\t');
+            if (changeSplit.length == 2) {
+              changes.add(new GitCommitChange(changeSplit[1], changeSplit[0]));
+            }
+          }
+        }
+
         var parts = line.split("\n");
         var commit = new GitCommit(this);
+        commit.changes = changes;
         commit.sha = parts[0];
         commit.treeSha = parts[1];
         commit.author = new GitAuthor(this)
@@ -294,7 +317,7 @@ class GitClient {
           ..email = parts[5];
         commit.authoredAt = DateTime.parse(parts[6]);
         commit.committedAt = DateTime.parse(parts[7]);
-        commit.message = parts.getRange(8, parts.length).join("\n");
+        commit.message = parts.getRange(8, parts.length).join("\n").trim();
         commits.add(commit);
       }
       return commits;
