@@ -818,10 +818,14 @@ class GitClient {
     return refs;
   }
 
-  Future createTag(String name, {String commit}) async {
+  Future createTag(String name, {String commit, String message}) async {
     var args = ["tag", name];
     if (commit != null) {
       args.add(commit);
+    }
+    if (message != null) {
+      args.add('-m');
+      args.add(message);
     }
     var result = await execute(args);
     checkError(result.exitCode, "Failed to create tag ${name}");
