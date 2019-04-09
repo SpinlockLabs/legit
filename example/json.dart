@@ -13,12 +13,12 @@ handle() async {
     "repositories/git"
   );
 
-  var json = {};
-  var refs = json["refs"] = [];
-  var commits = json["commits"] = [];
+  var json = <String, dynamic>{};
+  var refs = json["refs"] = <dynamic>[];
+  var commits = json["commits"] = <dynamic>[];
 
   for (GitRef ref in await git.listRefs()) {
-    var map = {
+    var map = <String, dynamic>{
       "name": ref.name,
       "type": ref.type
     };
@@ -48,8 +48,8 @@ handle() async {
   );
 }
 
-Map serializeCommit(GitCommit commit) {
-  return {
+Map<String, dynamic> serializeCommit(GitCommit commit) {
+  return <String, dynamic>{
     "sha": commit.sha,
     "message": commit.message,
     "author": {

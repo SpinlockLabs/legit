@@ -36,9 +36,6 @@ class GitClient {
   }
 
   factory GitClient.forDirectory(Directory dir) {
-    if (!dir.existsSync()) {
-      dir.createSync(recursive: true);
-    }
     return new GitClient._(dir.absolute);
   }
 
@@ -81,6 +78,10 @@ class GitClient {
         await client.directory.delete(recursive: true);
         await client.directory.create(recursive: true);
       }
+    }
+
+    if (!(await client.directory.exists())) {
+      await client.directory.create(recursive: true);
     }
 
     await client.clone(
@@ -280,21 +281,19 @@ class GitClient {
       return null;
     } else {
       String output = result.stdout.toString();
-      var commits = [];
+      var commits = <GitCommit>[];
       List<String> clines = output.split("-;;;;-")
         .map((it) => it.trim())
         .toList();
       clines.removeWhere((it) => it.isEmpty || !it.contains("\n"));
 
       for (String line in clines) {
-        List changes;
-
-        // split info and changes
-        List linechange = line.split('-;;;-');
+        List<GitCommitChange> changes;
+        List<String> linechange = line.split('-;;;-');
         line = linechange[0];
 
         if (detail) {
-          changes = [];
+          changes = <GitCommitChange>[];
           String changeStr = linechange[1];
           List changesRaw = changeStr.split('\n');
           for (String change in changesRaw) {
@@ -800,7 +799,7 @@ class GitClient {
   Future<List<GitRef>> listRefs() async {
     var result = await execute(["for-each-ref"]);
     List<String> refLines = result.stdout.split("\n");
-    var refs = [];
+    var refs = <GitRef>[];
     for (var line in refLines) {
       if (line.trim().isEmpty) continue;
 

@@ -4,8 +4,6 @@ import "dart:async";
 import "dart:convert";
 import "dart:io";
 
-import "id.dart";
-
 typedef ProcessResultHandler(BetterProcessResult result);
 typedef ProcessHandler(Process process);
 typedef OutputHandler(String string);
